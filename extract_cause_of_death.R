@@ -35,5 +35,5 @@ db_morsak <- db |> select(contains("MORSAK"))
 mask <- apply(db_morsak, 1:2, function(x) grepl("^I", x, ignore.case = FALSE))
 mask[is.na(mask)] <- FALSE  # optional: treat NAs as no-match
 
-cause_of_death$CVDdeath <- apply(mask,MARGIN = 1, any)
+cause_of_death$CVDdeath <- apply(mask, MARGIN = 1, any)
 save(cause_of_death, file = "../0_Reference_Data/0_otherRegions/Processed/AnyCVDCauseOfDeath.RData")
