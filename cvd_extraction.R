@@ -32,51 +32,150 @@ rm(data_list)
 data_list <- load_rdata("/Users/mehman/Projects/0_Reference_Data/0_otherRegions/patregsluten_2008_2019_fall.RData")
 sv <- data_list$patregsluten_2008_2019_fall
 rm(data_list)
+
+data_list <- load_rdata("/Users/mehman/Projects/0_Reference_Data/0_otherRegions/patregsluten_1987_2007_fall.RData")
+sv_before_2007 <- data_list$patregsluten_1987_2007_fall
+rm(data_list)
+
 ov$INDATUMA <- as.Date(ifelse(is.na(ov$INDATUMA), as.Date(paste0(ov$AR, "-07-01")), 
                               as.Date(ov$INDATUMA, format = "%Y%m%d")))
+sv$INDATUMA <- as.Date(ifelse(is.na(sv$INDATUMA), as.Date(paste0(sv$AR, "-07-01")), 
+                              as.Date(sv$INDATUMA, format = "%Y%m%d")))
 
+sv_before_2007$INDATUMA <- as.Date(ifelse(is.na(sv_before_2007$INDATUMA), as.Date(paste0(sv_before_2007$AR, "-07-01")), 
+                              as.Date(sv_before_2007$INDATUMA, format = "%Y%m%d")))
 
-sv$INDATUMA <- as.Date(sv$INDATUMA, format = "%Y%m%d")
 sv$UTDATUMA <- as.Date(sv$UTDATUMA, format = "%Y%m%d")
+sv_before_2007$UTDATUMA <- as.Date(sv_before_2007$UTDATUMA, format = "%Y%m%d")
 
 
-sv <- sv %>% filter(LopNr %in% data)
+ov <- ov %>% filter(LopNr %in% date_of_diag$LopNr)
+sv <- sv %>% filter(LopNr %in% date_of_diag$LopNr)
+sv_before_2007 <- sv_before_2007 %>% filter(LopNr %in% date_of_diag$LopNr)
+
 
 CVDs = c(
-  "STEMI",
-  "NSTEMI",
-  "subMI",
-  "AnginaPectoris",
-  "AtrialFibrilFlutter",
-  "AtrioventBlock",
-  "Venttachycardia",
-  "VentFibrilFlutter",
-  "HeartFailure",
-  "Stroke",
-  "Claudication",
-  "CoronaryStent",
-  "CABG",
-  "Pacemaker",
-  "CRT_ICD"
+  "I21", #"STEMI" & "NSTEMI"
+  "I22", #"subMI"
+  "I20", #"AnginaPectoris"
+  "I48", #"AtrialFibrilFlutter"
+  "I44", #"AtrioventBlock"
+  "I47", #"Venttachycardia"
+  "I49", #"VentFibrilFlutter"
+  "I50", #"HeartFailure"
+  "I61", #"Stroke"
+  "I70", #"Claudication"
+  "Z95" #"CoronaryStent", "CABG", "Pacemaker", "CRT_ICD"
 )
 
 otherCVDs <- c(
-  "Cardiac_Arrest_date",  
-  "date_of_Cardiomyopati_I42_43_",  
-  "Arteries_diseases_date",  
-  "Atherosclerosis_date", ####
-  "Pulmonary_embolism_date",
-  "Venous_embolism_and_thrombosis_date",
-  "date_of_VOC_I34_37_",  
-  "Cerebrovascular_diseases_date",
-  "Date_of_Arrytmi_I44_45_I47_49_",  ####
-  "Ischemic_heart_disease_date" ####
+  "I46", #"Cardiac_Arrest_date"
+  "I42", "I43",  #"date_of_Cardiomyopati_I42_43_"
+  "I71", "I72", "I73", "I74", "I75",  #"Arteries_diseases_date"
+  "I70", #"Atherosclerosis_date"
+  "I26", #"Pulmonary_embolism_date"
+  "I81", "I82", #"Venous_embolism_and_thrombosis_date"
+  "I34", "I35", "I36", "I37", #"date_of_VOC_I34_37_",  
+  "I60", "I61", "I62", "I63", "I64", "I65", "I66", "I67", # "Cerebrovascular_diseases_date"
+  "I44", "I45", "I47", "I48", "I49", #"Date_of_Arrytmi_I44_45_I47_49_",  ####
+  "I20", "I21", "I22", "I23", "I24", "I25" #  "Ischemic_heart_disease_date" ####
 )
 
+anyCVDs <- unique (c(CVDs, otherCVDs))
+
 MACE = c(
-  "STEMI",
-  "NSTEMI",
-  "subMI",
-  "HeartFailure",
-  "Stroke"
+  "I21", # "STEMI", "NSTEMI"
+  "I22", # "subMI",
+  "I50", # "HeartFailure"
+  "I61" # "Stroke"
 )
+
+CVDstatus <- data.frame(LopNr = date_of_diag$LopNr)
+CVDstatus$anyCVDbefore <- 0
+CVDstatus$MACE <- 0
+CVDstatus$MACE_date <- as.Date("2100-12-31")
+for (pat in date_of_diag$LopNr) {
+  mace = 0
+  ov_date <- as.Date("2100-12-31")
+  sv_date <- as.Date("2100-12-31")
+  ov_2007_date <- as.Date("2100-12-31")
+  
+  selected <- sv[sv$LopNr == pat, c("hdia", "INDATUMA")]
+  selected <- selected %>% filter(selected$hdia != "")
+  date_of_BC <- min(date_of_diag$Date_of_BC[date_of_diag$LopNr == pat])
+  
+  before_sv <- selected %>% filter(selected$INDATUMA <= date_of_BC)
+  all_sv <- before_sv$hdia
+  
+  after_sv <- selected %>% filter(selected$INDATUMA > date_of_BC)
+  if (nrow(after_sv) > 0) {
+    rows <- which(
+      vapply(after_sv$hdia, function(x) any(startsWith(x, MACE)), logical(1))
+    )
+    mace_events <- if (length(rows) > 0) after_sv[rows, 2] else NULL
+    if (length(rows) > 0){
+      sv_date <- after_sv$INDATUMA[rows]
+      mace = 1
+    } 
+  } else {
+    mace_events <- NULL
+  }
+  
+  
+  selected <- ov[ov$LopNr == pat, c(1, 7, 8:37)]
+  selected <- selected %>% filter(any(selected[, c(1, 3:32)] != ""))
+  
+  before_ov <- selected %>% filter(selected$INDATUMA <= date_of_BC)
+  all_ov <- unique(unlist(before_ov[, c(1, 3:32)]))
+  
+  all_ov <- all_ov[all_ov != ""]
+  
+  after_ov <- selected %>% filter(selected$INDATUMA > date_of_BC)
+  # after_ov <- unique(unlist(after_ov[, c(1, 3:32)]))
+  # after_ov <- after_ov[after_ov != ""]
+  
+  if (nrow(after_ov) > 0) {
+    rows <- which(
+      vapply(after_sv$hdia, function(x) any(startsWith(x, MACE)), logical(1))
+    )
+    mace_events <- if (length(rows) > 0) after_ov[rows, 2] else NULL
+    if (length(rows) > 0){
+      ov_date <- after_ov$INDATUMA[rows]
+      mace = 1
+    } 
+  } else {
+    mace_events <- NULL
+  }
+  
+  selected <- sv_before_2007[sv_before_2007$LopNr == pat, c(1, 7, 10:39)]
+  selected <- selected %>% filter(any(selected[, c(1, 3:32)] != ""))
+  
+  before_ov_2007 <- selected %>% filter(selected$INDATUMA <= date_of_BC)
+  all_ov_2007 <- unique(unlist(before_ov_2007[, c(1, 3:32)]))
+  all_ov_2007 <- all_ov_2007[all_ov_2007 != ""]
+  
+  after_ov_2007 <- selected %>% filter(selected$INDATUMA > date_of_BC)
+  # after_ov_2007 <- unique(unlist(after_ov_2007[, c(1, 3:32)]))
+  # after_ov_2007 <- after_ov_2007[after_ov_2007 != ""]
+  
+  if (nrow(after_ov_2007) > 0) {
+    rows <- which(
+      vapply(after_sv$hdia, function(x) any(startsWith(x, MACE)), logical(1))
+    )
+    mace_events <- if (length(rows) > 0) after_ov_2007[rows, 2] else NULL
+    if (length(rows) > 0){
+      ov_2007_date <- after_ov_2007$INDATUMA[rows]
+      mace = 1
+    } 
+  } else {
+    mace_events <- NULL
+  }
+  
+  CVDstatus$anyCVDbefore[CVDstatus$LopNr == pat] <- ifelse(any(sapply(anyCVDs, function(x) any(startsWith(before_sv$hdia  , x))))
+                                                           | any(sapply(anyCVDs, function(x) any(startsWith(before_ov$hdia, x))))
+                                                            | any(sapply(anyCVDs, function(x) any(startsWith(before_ov_2007$hdia, x)))), 1, 0)
+  if (mace == 1) {
+    CVDstatus$MACE[CVDstatus$LopNr == pat] <- 1
+    CVDstatus$MACE_date[CVDstatus$LopNr == pat] <- min(c(ov_2007_date, sv_date, ov_date))
+  }
+}
